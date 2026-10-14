@@ -1,0 +1,225 @@
+
+-- DEATH NOTE | Target System
+-- Roblox Studio LocalScript
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local target = nil
+local espEnabled = false
+local aimEnabled = false
+local highlight = nil
+
+-- Interface
+local gui = Instance.new("ScreenGui")
+gui.Name = "DeathNote"
+gui.ResetOnSpawn = false
+gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.fromOffset(310, 350)
+frame.Position = UDim2.new(0.5, -155, 0.5, -175)
+frame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+frame.Active = true
+frame.Draggable = true
+frame.Parent = gui
+
+local corner = Instance.new("UICorner", frame)
+corner.CornerRadius = UDim.new(0, 12)
+
+local function makeLabel(text, y, height)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -20, 0, height)
+    label.Position = UDim2.fromOffset(10, y)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = Color3.fromRGB(230, 40, 40)
+    label.TextScaled = true
+    label.Font = Enum.Font.GothamBold
+    label.Parent = frame
+    return label
+end
+
+makeLabel("DEATH NOTE", 12, 45)
+
+local input = Instance.new("TextBox")
+input.Size = UDim2.new(1, -30, 0, 42)
+input.Position = UDim2.fromOffset(15, 75)
+input.PlaceholderText = "Enter player name..."
+input.Text = ""
+input.TextColor3 = Color3.new(1, 1, 1)
+input.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+input.Font = Enum.Font.Gotham
+input.TextSize = 17
+input.Parent = frame
+
+Instance.new("UICorner", input).CornerRadius =
+    UDim.new(0, 8)
+
+local function button(text, y)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, -30, 0, 45)
+    b.Position = UDim2.fromOffset(15, y)
+    b.BackgroundColor3 = Color3.fromRGB(90, 15, 20)
+    b.TextColor3 = Color3.new(1, 1, 1)
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 16
+    b.Text = text
+    b.Parent = frame
+
+    Instance.new("UICorner", b).CornerRadius =
+        UDim.new(0, 8)
+
+    return b
+end
+
+local selectButton = button("SELECT TARGET", 130)
+local espButton = button("ESP: OFF", 190)
+local aimButton = button("AIM LOCK: OFF", 250)
+
+local status = makeLabel("No target selected", 310, 25)
+status.TextColor3 = Color3.new(1, 1, 1)
+status.TextSize = 14
+status.TextScaled = false
+
+local function removeESP()
+    if highlight then
+        highlight:Destroy()
+        highlight = nil
+    end
+end
+
+local function updateESP()
+    removeESP()
+
+    if not espEnabled or not target then
+        return
+    end
+
+    local character = target.Character
+    if not character then return end
+
+    highlight = Instance.new("Highlight")
+    highlight.Name = "DeathNoteESP"
+    highlight.Adornee = character
+    highlight.FillColor = Color3.fromRGB(255, 0, 0)
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+    highlight.FillTransparency = 0.55
+    highlight.OutlineTransparency = 0
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Parent = gui
+end
+
+local function findPlayer(name)
+    name = string.lower(name)
+
+    if name == "" then return nil end
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local username = string.lower(player.Name)
+            local display = string.lower(player.DisplayName)
+
+            if string.sub(username, 1, #name) == name
+                or string.sub(display, 1, #name) == name then
+                return player
+            end
+        end
+    end
+
+    return nil
+end
+
+selectButton.MouseButton1Click:Connect(function()
+    local player = findPlayer(input.Text)
+
+    if not player then
+        status.Text = "Player not found"
+        return
+    end
+
+    target = player
+    status.Text = "TARGET: " .. player.Name
+    updateESP()
+end)
+
+espButton.MouseButton1Click:Connect(function()
+    espEnabled = not espEnabled
+
+    espButton.Text =
+        espEnabled and "ESP: ON" or "ESP: OFF"
+
+    updateESP()
+end)
+
+aimButton.MouseButton1Click:Connect(function()
+    aimEnabled = not aimEnabled
+
+    aimButton.Text =
+        aimEnabled and "AIM LOCK: ON"
+        or "AIM LOCK: OFF"
+end)
+
+-- Smooth camera tracking
+RunService:BindToRenderStep(
+    "DeathNoteAim",
+    Enum.RenderPriority.Camera.Value + 1,
+    function(dt)
+        if not aimEnabled or not target then
+            return
+        end
+
+        local character = target.Character
+        if not character then return end
+
+        local head = character:FindFirstChild("Head")
+        if not head then return end
+
+        Camera = workspace.CurrentCamera
+        if not Camera then return end
+
+        local desired = CFrame.lookAt(
+            Camera.CFrame.Position,
+            head.Position
+        )
+
+        local alpha = 1 - math.exp(-10 * dt)
+
+        Camera.CFrame = Camera.CFrame:Lerp(
+            desired,
+            alpha
+        )
+    end
+)
+
+Players.PlayerRemoving:Connect(function(player)
+    if player == target then
+        target = nil
+        aimEnabled = false
+        aimButton.Text = "AIM LOCK: OFF"
+        status.Text = "Target left"
+        removeESP()
+    end
+end)
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        if player == target then
+            task.wait(0.5)
+            updateESP()
+        end
+    end)
+end)
+
+for _, player in ipairs(Players:GetPlayers()) do
+    player.CharacterAdded:Connect(function()
+        if player == target then
+            task.wait(0.5)
+            updateESP()
+        end
+    end)
+end
